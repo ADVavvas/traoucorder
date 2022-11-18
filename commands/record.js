@@ -7,9 +7,12 @@ module.exports = {
     const channel = message.member.voice.channel;
     
     user = message.member;
+    if(message.mentions.users.size) {
+      user = message.mentions.users.first();
+    }
     //user = message.guild.members.cache.get("232564635201568769");
     console.log(user);
-    fs.mkdirSync('./recordings/' + user.nickname, {recursive:true});
+    fs.mkdirSync('./recordings/' + user.username, {recursive:true});
     
     if (!channel) return console.error("You must connect to a voice channel!");
 

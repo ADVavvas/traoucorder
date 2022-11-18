@@ -7,14 +7,24 @@ module.exports = {
     const fs = require('fs');
     
     user = message.member;
+
+    if(message.mentions.users.size) {
+      user = message.mentions.users.first();
+    }
+
+    console.log(user);
     //user = message.guild.members.cache.get("232564635201568769");
-    const soundFiles = fs.readdirSync('./recordings/' + user.nickname + '/').filter(file => !file.startsWith("."));
+    const soundFiles = fs.readdirSync('./recordings/' + user.username + '/').filter(file => !file.startsWith("."));
+
+    if(!soundFiles) {
+      message.reply("There are no recordings for the user");
+    }
 
     buffers = []
 
     for(file of soundFiles) {
         console.log(file);
-        buffers.push(fs.readFileSync('./recordings/' + user.nickname + '/' + file));
+        buffers.push(fs.readFileSync('./recordings/' + user.username + '/' + file));
     }
 
     const totalBufferLength = buffers

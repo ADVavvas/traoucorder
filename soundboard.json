@@ -1,10 +1,38 @@
 [
   {
-   "name":"kalhzwh",
-   "file":"kalhzwh.mp3"
+    "name": "kalhzwh",
+    "file": "kalhzwh.mp3"
   },
   {
-    "name": "mantepse",
+    "name": "gtxs",
+    "file": "gtxs.mp3"
+  },
+  {
+    "name": "sound_mantepse",
     "file": "mantepse.mp3"
+  },
+  {
+    "name": "sound_laugh",
+    "file": "traou_gelio.mp3"
+  },
+  {
+    "name": "traou an hmoun",
+    "file": "traou_an_hmoun.mp3"
+  },
+  {
+    "name": "sound_skase",
+    "file": "traou_skase.mp3"
+  },
+  {
+    "name": "traou pizza",
+    "file": "traou_pizza.mp3"
+  },
+  {
+    "name": "traou omg",
+    "file": "traou_thee.mp3"
+  },
+  {
+    "name": "mission_swp",
+    "file": "mission_swp.mp3"
   }
 ]
