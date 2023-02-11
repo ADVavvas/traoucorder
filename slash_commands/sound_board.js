@@ -11,6 +11,7 @@ module.exports = {
         .setDescription('Which sound to play')
         .setRequired(true)
         .addChoices(
+          { name: 'kalh zwh', value: 'kalhzwh' },
           { name: 'mantepse', value: 'sound_mantepse' },
           { name: 'skase', value: 'sound_skase' },
           { name: 'gtxs', value: 'gtxs' },
@@ -50,7 +51,7 @@ module.exports = {
       if (subscription) {
 
         // Unsubscribe after 5 seconds (stop playing audio on the voice connection)
-        setTimeout(() => subscription.unsubscribe(), 5_000);
+        setTimeout(() => subscription.unsubscribe(), 10_000);
         const resource = createAudioResource(`${folder}${fileName}`);
         player.play(resource);
         player.on('error', error => {

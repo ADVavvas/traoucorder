@@ -1,4 +1,4 @@
-const { playAudio } = require('../../soundboard_helper.js');
+const { playAudio } = require('../soundboard_helper.js');
 
 module.exports = {
   mission_swp(oldState, newState) {

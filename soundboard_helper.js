@@ -7,7 +7,10 @@ module.exports = {
 
     if (!channel) return console.error('You must connect to a voice channel!');
 
-    if (!client.sounds.has(sound)) return;
+    if (!client.sounds.has(sound)) {
+      console.log('No such sound');
+      return;
+    }
 
     const fileName = client.sounds.get(sound);
 

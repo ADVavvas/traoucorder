@@ -122,3 +122,9 @@ dist
 .yarn/build-state.yml
 .yarn/install-state.gz
 .pnp.*i
+
+# vscode
+.vscode/
+
+# Vosk speech recognition
+model/

@@ -8,7 +8,7 @@ const path = require('node:path');
 
 module.exports = {
   data: new SlashCommandBuilder()
-    .setName('record')
+    .setName('record2')
     .setDescription('Record a user')
     .addUserOption(option =>
       option.setName('target')
