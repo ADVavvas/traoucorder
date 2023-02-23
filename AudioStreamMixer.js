@@ -1,51 +1,6 @@
 const { Readable, Writable } = require('stream');
 const { Buffer } = require('node:buffer');
-const { clearTimeout } = require('timers');
-
-
 /*
-class SpeechRecognizer {
-  #currentSegmentLength = 0;
-  #currentText = "";
-  #keywordMap = new Map();
-
-  constructor() { }
-
-  onWord(keyword, callback) {
-    this.#keywordMap.set(keyword, callback)
-  }
-
-  processText(text) {
-    this.#currentSegmentLength = 0;
-
-  }
-
-  processPartialText(text) {
-    let textToCheck = "";
-
-    if (this.#currentSegmentLength == text.length && text == this.#currentText) return;
-
-    this.#currentText = text;
-
-    if (this.#currentSegmentLength < text.length) {
-      textToCheck = text.substring(this.#currentSegmentLength);
-      console.log(textToCheck);
-    } else if (this.#currentSegmentLength > text.length) {
-      // Text has been reset.
-      this.#currentSegmentLength = text.length;
-      textToCheck = text;
-    }
-    for (const [word, callback] of this.#keywordMap) {
-      if (textToCheck.includes(word)) {
-        this.#currentSegmentLength = text.length;
-        callback();
-        return;
-      }
-    }
-  }
-
-}
-*/
 class SilentStream extends Readable {
 
   constructor() {
@@ -77,6 +32,7 @@ class SilentStream extends Readable {
     return sampleBuf;
   }
 }
+*/
 
 class SilenceFillerInput extends Writable {
   constructor(args) {
@@ -101,13 +57,11 @@ class SilenceFillerInput extends Writable {
       this.readSample = this.buffer.readInt8;
       this.writeSample = this.buffer.writeInt8;
       this.sampleByteLength = 1;
-    }
-    else if (args.bitDepth === 32) {
+    } else if (args.bitDepth === 32) {
       this.readSample = this.buffer.readInt32LE;
       this.writeSample = this.buffer.writeInt32LE;
       this.sampleByteLength = 4;
-    }
-    else {
+    } else {
       args.bitDepth = 16;
       this.readSample = this.buffer.readInt16LE;
       this.writeSample = this.buffer.writeInt16LE;
@@ -117,13 +71,15 @@ class SilenceFillerInput extends Writable {
     this.hasData = false;
     this.lastClearTime = new Date().getTime();
   }
+
   _write(chunk, encoding, next) {
     if (!this.hasData) {
       this.hasData = true;
     }
     this.buffer = Buffer.concat([this.buffer, chunk]);
-    next()
+    next();
   }
+
   setMixer(mixer) {
     this.mixer = mixer;
   }
@@ -138,24 +94,37 @@ class SilenceFillerInput extends Writable {
     if (this.buffer.length < bytes) {
       bytes = this.buffer.length;
     }
-    let sample = this.buffer.slice(0, bytes);
+    const sample = this.buffer.slice(0, bytes);
     this.buffer = this.buffer.slice(bytes);
     for (let i = 0; i < sample.length; i += 2) {
       sample.writeInt16LE(Math.floor(this.args.volume * sample.readInt16LE(i) / 100), i);
     }
+    console.log(this.buffer.length);
     return sample;
   }
 
   readMono(samples) {
-    let stereoBuffer = this.read(samples);
-    let monoBuffer = new Buffer(stereoBuffer.length / 2);
-    let availableSamples = this.availableSamples(stereoBuffer.length);
+    const stereoBuffer = this.read(samples);
+    const monoBuffer = new Buffer.alloc(stereoBuffer.length / 2);
+    const availableSamples = this.availableSamples(stereoBuffer.length);
     for (let i = 0; i < availableSamples; i++) {
-      let l = this.readSample.call(stereoBuffer, i * this.sampleByteLength * 2);
-      let r = this.readSample.call(stereoBuffer, (i * this.sampleByteLength * 2) + this.sampleByteLength);
+      const l = this.readSample.call(stereoBuffer, i * this.sampleByteLength * 2);
+      const r = this.readSample.call(stereoBuffer, (i * this.sampleByteLength * 2) + this.sampleByteLength);
       this.writeSample.call(monoBuffer, Math.floor((l + r) / 2), i * this.sampleByteLength);
     }
     return monoBuffer;
+  }
+
+  readStereo(samples) {
+    const monoBuffer = this.read(samples);
+    const stereoBuffer = new Buffer.alloc(monoBuffer.length * 2);
+    const availableSamples = this.availableSamples(monoBuffer.length);
+    for (let i = 0; i < availableSamples; i++) {
+      const m = this.readSample.call(monoBuffer, i * this.sampleByteLength);
+      this.writeSample.call(stereoBuffer, m, i * this.sampleByteLength * 2);
+      this.writeSample.call(stereoBuffer, m, (i * this.sampleByteLength * 2) + this.sampleByteLength);
+    }
+    return stereoBuffer;
   }
 }
 
@@ -164,8 +133,8 @@ class SilenceFiller extends Readable {
     super(args);
     this.needReadable = true;
     this._timer = null;
-    this.sampleRate = 16000
-    let buffer = new Buffer.alloc(this.readableHighWaterMark);
+    this.sampleRate = 48000;
+    const buffer = new Buffer.alloc(this.readableHighWaterMark);
     this.bitDepth = 16;
     this.readSample = buffer.readInt16LE;
     this.writeSample = buffer.writeInt16LE;
@@ -175,45 +144,45 @@ class SilenceFiller extends Readable {
     this.isReading = false;
     this.interval = null;
     this.mixerBuffer = new Buffer.alloc(this.readableHighWaterMark);
-  }
-
-  generateSilence(size) {
-    var bitDepth = 16;
-    var byteDepth = 2;
-    var frameSize = 2;
-    var sampleBuf = new Buffer.alloc(Math.floor(size / frameSize) * frameSize);
-
-    for (var i = 0; i < sampleBuf.length; i += byteDepth) {
-      sampleBuf.slice(i).writeInt16LE(0, 0);
-      //['writeInt' + bitDepth + 'LE'](0, 0);
-    }
-    return sampleBuf;
+    this.lastCall = 0;
   }
 
   input(args, channel) {
-    let input = new SilenceFillerInput();
+    const input = new SilenceFillerInput();
     this.addInput(input, channel);
     return input;
   }
+
   addInput(input, channel) {
     input.setMixer(this);
     this.inputs[channel || this.inputs.length] = input;
   }
+
   start() {
-    // Every 20ms write 640 bytes
-    let mixer = this;
+    // channel * (bitDepth/8) = sampleSize
+    // 48_000 samples / sec
+    // (48_000 / 50) / 20ms = 960 frameSize
+    // Every 20ms write 960 samples
+    // Every 200ms write 9600 samples = 9600 * channels * byteLength
+
+    this.lastCall = Date.now();
+
+    const mixer = this;
     this.interval = setInterval(function () {
-      let tempBuffer = new Buffer.alloc(8000);
+      mixer.lastCall = Date.now();
+      const samplesInFrame = 960;
+      const samples = Math.max(...mixer.inputs.map(o => o.availableSamples() - samplesInFrame), samplesInFrame);
+
+      const tempBuffer = new Buffer.alloc(samples * mixer.args.channels * mixer.sampleByteLength);
       tempBuffer.fill(0);
 
-      //let silence = mixer.generateSilence(4000);
       mixer.inputs.forEach((input) => {
-        let inputSamples = Math.min(input.availableSamples(), 4000);
+        const inputSamples = Math.max(input.availableSamples() - samplesInFrame, samplesInFrame);
         if (input.hasData) {
-          let inputBuffer = mixer.args.channels === 1 ? input.readMono(inputSamples) : input.readStereo(inputSamples);
+          const inputBuffer = mixer.args.channels === 1 ? input.readMono(inputSamples) : input.readStereo(inputSamples);
           for (let i = 0; i < inputSamples * mixer.args.channels; i++) {
-            let inSample = mixer.readSample.call(inputBuffer, i * mixer.sampleByteLength)
-            let sample = mixer.readSample.call(tempBuffer, i * mixer.sampleByteLength) + Math.floor(inSample / mixer.inputs.length);
+            const inSample = mixer.readSample.call(inputBuffer, i * mixer.sampleByteLength);
+            const sample = mixer.readSample.call(tempBuffer, i * mixer.sampleByteLength) + Math.floor(inSample / mixer.inputs.length);
             mixer.writeSample.call(tempBuffer, sample, i * mixer.sampleByteLength);
           }
         }
@@ -221,14 +190,14 @@ class SilenceFiller extends Readable {
 
       mixer.mixerBuffer = Buffer.concat([mixer.mixerBuffer, tempBuffer]);
 
-      let samples = mixer.getSamples();
-      if (samples > 0 && samples !== Number.MAX_VALUE) {
-        let returnBuffer = mixer.mixerBuffer.slice(0, samples * mixer.sampleByteLength * mixer.args.channels);
+      const s = mixer.getSamples();
+      if (s > 0 && s !== Number.MAX_VALUE) {
+        const returnBuffer = mixer.mixerBuffer.slice(0, s * mixer.sampleByteLength * mixer.args.channels);
         mixer.push(returnBuffer);
-        mixer.mixerBuffer = mixer.mixerBuffer.slice(samples * mixer.sampleByteLength * mixer.args.channels);
+        mixer.mixerBuffer = mixer.mixerBuffer.slice(s * mixer.sampleByteLength * mixer.args.channels);
       }
 
-    }, 250);
+    }, 20);
   }
 
   _read() {
@@ -256,11 +225,10 @@ class SilenceFiller extends Readable {
   getMaxSamples() {
     let samples = Number.MAX_VALUE;
     this.inputs.forEach((input) => {
-      let ias = input.availableSamples();
+      const ias = input.availableSamples();
       if (ias > 0) {
         input.lastDataTime = new Date().getTime();
-      }
-      else if (ias <= 0 && new Date().getTime() - input.lastDataTime >= 2000) {
+      } else if (ias <= 0 && new Date().getTime() - input.lastDataTime >= 2000) {
         input.hasData = false;
         return;
       }
@@ -273,9 +241,8 @@ class SilenceFiller extends Readable {
 
   // Write to mixer buffer every 250ms - input writes faster. If no input, the 'rest' of the buffer is 0 (silence for 16bit 1 channel LE PCM)
   // Read from buffer when there's data available.
-  // 
   getSamples() {
-    let length = this.mixerBuffer.length;
+    const length = this.mixerBuffer.length;
     return Math.floor(length / ((this.args.bitDepth / 8) * this.args.channels));
     /*
 
@@ -308,7 +275,6 @@ class SilenceFiller extends Readable {
 }
 
 module.exports = {
-  SilentStream: SilentStream,
   SilenceFiller: SilenceFiller,
   SilenceFillerInput: SilenceFillerInput,
-}
+};

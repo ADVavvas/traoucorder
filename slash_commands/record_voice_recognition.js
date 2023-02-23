@@ -7,12 +7,11 @@ const fs = require('fs');
 const path = require('node:path');
 const vosk = require('vosk');
 const { playAudio } = require('../soundboard_helper');
-const AudioMixer = require('audio-mixer');
-const { SilenceFiller, SilenceFillerInput } = require('../SpeechRecognizer');
+const { SilenceFiller, SilenceFillerInput } = require('../AudioStreamMixer');
 
 module.exports = {
   data: new SlashCommandBuilder()
-    .setName('record')
+    .setName('voice_command')
     .setDescription('Record a user')
     .addUserOption(option =>
       option.setName('target')
@@ -28,14 +27,6 @@ module.exports = {
 
     rec.setMaxAlternatives(0);
     rec.setWords(true);
-
-    //`ffmpeg -f lavfi -i anullsrc=r=1600:cl=1 pcm_s16le`
-    const mixer = new AudioMixer.Mixer({
-      channels: 1,
-      sampleRate: 16_000,
-      bitDepth: 16,
-      clearInterval: 10,
-    });
 
     const user = interaction.options.getUser('target');
     await interaction.reply(`Recording ${user.username}`);
@@ -89,33 +80,7 @@ module.exports = {
 
     silenceMixer.addInput(silenceInput);
 
-    const mixerInput = mixer.input({
-      channels: 1,
-      volume: 100,
-      bitDepth: 16,
-      sampleRate: 16_000,
-    });
-
-    /*
-    const passthroughInput = mixer.input({
-      channels: 1,
-      volume: 100,
-      bitDepth: 16,
-      sampleRate: 16_000,
-    });
-    */
-
-    // ---------------------------------
-    // const silence = new PcmSilenceReadable({ channels: 1, bitDepth: 16, signed: true, float: false, byteOrder: 'LE' });
-    // userStream.pipe(transcoder).pipe(mixerInput);
-    // silence.pipe(passthroughInput);
-    // ---------------------------------
     userStream.pipe(transcoder).pipe(silenceInput);
-
-
-    // silence.pipe(passthroughInput);
-
-    // stream.PassThrough().pipe(passthroughInput);
 
     silenceMixer.on('data', data => {
       if (rec.acceptWaveform(data)) {
@@ -136,7 +101,6 @@ module.exports = {
     });
 
 
-    // mixer.pipe(file);
     silenceMixer.pipe(file);
   },
 };
