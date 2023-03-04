@@ -1,11 +1,20 @@
 const { ChannelRecorder } = require('../../voice_helpers');
+const { ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 
 module.exports = {
   async recordChannel(interaction) {
 
     const channel = interaction.options.getChannel('target');
     const client = interaction.client;
-    await interaction.reply(`Recording ${channel}`);
+    const row = new ActionRowBuilder()
+      .addComponents(
+        new ButtonBuilder()
+          .setCustomId('stop')
+          .setStyle(ButtonStyle.Secondary)
+          .setEmoji('◽'),
+      );
+
+    await interaction.reply({ content: `Recording ${channel}`, components: [row] });
 
     const channelRecorder = new ChannelRecorder(client, channel);
     client.recorders.set(channel.id, channelRecorder);

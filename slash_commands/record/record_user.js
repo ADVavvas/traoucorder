@@ -1,4 +1,5 @@
 const { UserRecorder } = require('../../voice_helpers');
+const { ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 
 module.exports = {
 
@@ -10,11 +11,28 @@ module.exports = {
     const member = interaction.guild.members.cache.get(user.id);
     const channel = member.voice.channel;
 
-    await interaction.reply(`Recording ${user.username}`);
-
+    const row = new ActionRowBuilder()
+      .addComponents(
+        new ButtonBuilder()
+          .setCustomId('stop')
+          .setStyle(ButtonStyle.Secondary)
+          .setEmoji('◽'),
+      );
 
     const userRecorder = new UserRecorder(client, channel, user);
     userRecorder.connect();
     userRecorder.startRecording(silence);
+
+    await interaction.reply({ content: `Recording ${user}`, components: [row] });
+
+    const filter = i => i.customId === 'stop';
+
+    const collector = interaction.channel.createMessageComponentCollector({ filter, time: 60000 });
+
+    collector.on('collect', async i => {
+      userRecorder.close();
+      await i.update({ content: `Stopped recording ${user}`, components: [] });
+    });
+
   },
 };

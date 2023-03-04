@@ -99,7 +99,7 @@ class SilenceFillerInput extends Writable {
     for (let i = 0; i < sample.length; i += 2) {
       sample.writeInt16LE(Math.floor(this.args.volume * sample.readInt16LE(i) / 100), i);
     }
-    console.log(this.buffer.length);
+    // console.log(this.buffer.length);
     return sample;
   }
 
@@ -144,7 +144,6 @@ class SilenceFiller extends Readable {
     this.isReading = false;
     this.interval = null;
     this.mixerBuffer = new Buffer.alloc(this.readableHighWaterMark);
-    this.lastCall = 0;
   }
 
   input(args, channel) {
@@ -165,20 +164,22 @@ class SilenceFiller extends Readable {
     // Every 20ms write 960 samples
     // Every 200ms write 9600 samples = 9600 * channels * byteLength
 
-    this.lastCall = Date.now();
 
     const mixer = this;
     this.interval = setInterval(function () {
-      mixer.lastCall = Date.now();
       const samplesInFrame = 960;
-      const samples = Math.max(...mixer.inputs.map(o => o.availableSamples() - samplesInFrame), samplesInFrame);
+      let samples = Math.max(...mixer.inputs.map(o => o.availableSamples()), samplesInFrame);
+
+      if (samples / samplesInFrame > 1) {
+        samples = samples - samplesInFrame;
+      }
 
       const tempBuffer = new Buffer.alloc(samples * mixer.args.channels * mixer.sampleByteLength);
       tempBuffer.fill(0);
 
       mixer.inputs.forEach((input) => {
-        const inputSamples = Math.max(input.availableSamples() - samplesInFrame, samplesInFrame);
-        if (input.hasData) {
+        const inputSamples = Math.min(input.availableSamples(), samples);
+        if (input.hasData && inputSamples > 0) {
           const inputBuffer = mixer.args.channels === 1 ? input.readMono(inputSamples) : input.readStereo(inputSamples);
           for (let i = 0; i < inputSamples * mixer.args.channels; i++) {
             const inSample = mixer.readSample.call(inputBuffer, i * mixer.sampleByteLength);

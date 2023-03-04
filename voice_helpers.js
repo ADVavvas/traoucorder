@@ -1,4 +1,4 @@
-const { joinVoiceChannel, EndBehaviorType } = require('@discordjs/voice');
+const { joinVoiceChannel, EndBehaviorType, AudioReceiveStream } = require('@discordjs/voice');
 const prism = require('prism-media');
 const fs = require('fs');
 const path = require('node:path');
@@ -133,6 +133,9 @@ module.exports = {
     #transcoder;
     #channel;
     #user;
+    #stream;
+    #silenceMixer;
+    #file;
     constructor(client, channel, user) {
       this.#channel = channel;
       this.#client = client;
@@ -159,7 +162,7 @@ module.exports = {
         frameSize: 960,
       });
 
-      const stream = this.#connection.receiver.subscribe(this.#user.id,
+      this.#stream = this.#connection.receiver.subscribe(this.#user.id,
         {
           // Stops after 50 seconds of silence.
           end: {
@@ -183,12 +186,12 @@ module.exports = {
 
       console.log(`Recording ${filePath}`);
 
-      const file = fs.createWriteStream(filePath);
+      this.#file = fs.createWriteStream(filePath);
 
-      let output = stream.pipe(this.#transcoder);
+      let output = this.#stream.pipe(this.#transcoder);
 
       if (withSilence) {
-        const silenceMixer = new SilenceFiller({
+        this.#silenceMixer = new SilenceFiller({
           channels: 2,
           sampleRate: 48_000,
           bitDepth: 16,
@@ -201,17 +204,19 @@ module.exports = {
           volume: 100,
         });
 
-        silenceMixer.addInput(silenceInput);
+        this.#silenceMixer.addInput(silenceInput);
 
         output.pipe(silenceInput);
-        output = silenceMixer;
+        output = this.#silenceMixer;
       }
 
-      output.pipe(file);
+      output.pipe(this.#file);
     }
 
     close() {
-      // TODO: Implement
+      if (this.#stream != null) this.#stream.destroy();
+      if (this.#silenceMixer != null) this.#silenceMixer.destroy();
+      if (this.#file != null) this.#file.destroy();
     }
 
     // TODO: Maybe add guild
