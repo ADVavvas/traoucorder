@@ -1,87 +1,57 @@
+const { ComponentType } = require('discord.js');
 const { ChannelRecorder } = require('../../voice_helpers');
-const { ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
+const { buildButtonRow } = require('../../util/buttons.js');
+const RecordState = require('../../util/RecordState.js');
+const { playRecording, Duration } = require('../../util/playback');
 
 module.exports = {
   async recordChannel(interaction) {
 
     const channel = interaction.options.getChannel('target');
     const client = interaction.client;
-    const row = new ActionRowBuilder()
-      .addComponents(
-        new ButtonBuilder()
-          .setCustomId('stop')
-          .setStyle(ButtonStyle.Secondary)
-          .setEmoji('◽'),
-      );
+    const row = buildButtonRow();
+
+    if (client.recording.has(channel.guild.id)) {
+      await interaction.reply(`Traoucorder is already recording in the ${client.recording[channel.guild.id].channel} channel.`);
+      return;
+    }
+
+    if (channel.members.size == 0) {
+      await interaction.reply(`Channel ${channel} is empty. Please connect first.`);
+      return;
+    }
+
 
     await interaction.reply({ content: `Recording ${channel}`, components: [row] });
 
     const channelRecorder = new ChannelRecorder(client, channel);
-    client.recorders.set(channel.id, channelRecorder);
+
+    client.recording.set(channel.guild.id, new RecordState({ owner: interaction.user, channel: channel, user: null }));
+
     channelRecorder.connect();
     channelRecorder.startRecording();
-    /*
-    const connection = joinVoiceChannel({
-      channelId: channel.id,
-      guildId: channel.guild.id,
-      adapterCreator: channel.guild.voiceAdapterCreator,
-      selfDeaf: false,
-    });
 
-    const transcoder = new prism.opus.Decoder({
-      rate: 48_000,
-      channels: 2,
-      frameSize: 960,
-    });
+    const message = await interaction.fetchReply();
 
-    const mixer = new AudioMixer.Mixer({
-      channels: 2,
-      sampleRate: 48_000,
-      bitDepth: 16,
-      clearInterval: 10,
-    });
+    const filter = m => m.message.id === message.id;
 
-    const members = channel.members.filter(m => m.user.id != interaction.client.user.id);
+    message.awaitMessageComponent({ filter, componentType: ComponentType.Button, time: 60000 })
+      .then(i => {
+        if (i.customId === 'stop') {
+          i.update({ content: `Stopped recording ${channel}`, components: [] });
+          channelRecorder.close();
+          client.recording.delete(channel.guild.id);
+        } else if (i.customId === 'rewind') {
+          i.update({ content: `Stopped recording ${channel}\nPlaying last 30 seconds...`, components: [] });
+          // Null user.
+          playRecording(interaction, channel, null, Duration.Short);
+        } else if (i.customId === 'rewind60') {
+          i.update({ content: `Stopped recording ${channel}\nPlaying last 60 seconds...`, components: [] });
+          // Null user.
+          playRecording(interaction, channel, null, Duration.Long);
+        }
+      })
+      .catch(err => console.log(`No interactions were collected: ${err}`));
 
-    for (const [id, member] of members) {
-      const name = member.nickname ?? member.user.username;
-      console.log(`Recording ${name}(${id}) in ${channel.name}`);
-      const stream = connection.receiver.subscribe(member.user.id,
-        {
-          // Stops after 50 seconds of silence.
-          end: {
-            behavior: EndBehaviorType.AfterSilence,
-            duration: 50_000,
-          },
-        },
-      );
-
-      // Create an input stream for the mixer.
-      const input = mixer.input({ channels: 2 });
-
-      // Pipe the decoded stream to the mixer input.
-      stream.pipe(transcoder).pipe(input);
-
-    }
-
-    // Save into file
-    const dirPath = path.join('.', 'recordings', channel.id);
-    console.log(`Checking ${dirPath}`);
-    if (!fs.existsSync(dirPath)) {
-      console.log(`Creating ${dirPath}`);
-      fs.mkdirSync(dirPath);
-    }
-
-    const filePath = path.join(dirPath, Date.now().toString());
-
-    console.log(`Recording ${filePath}`);
-
-    const file = fs.createWriteStream(filePath);
-
-    mixer.pipe(file);
-
-
-    // TODO: Add silence.
-  */
   },
 };

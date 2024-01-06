@@ -1,4 +1,4 @@
-const { joinVoiceChannel, EndBehaviorType, AudioReceiveStream } = require('@discordjs/voice');
+const { joinVoiceChannel, EndBehaviorType, getVoiceConnection } = require('@discordjs/voice');
 const prism = require('prism-media');
 const fs = require('fs');
 const path = require('node:path');
@@ -13,9 +13,12 @@ module.exports = {
     #connection;
     #client;
     #transcoder;
-    #channel;
+    channel;
+    #file;
+    #streams = Collection();
+
     constructor(client, channel) {
-      this.#channel = channel;
+      this.channel = channel;
       this.#client = client;
       this.#users = new Collection();
     }
@@ -23,9 +26,9 @@ module.exports = {
     connect() {
       // Create connection
       this.#connection = joinVoiceChannel({
-        channelId: this.#channel.id,
-        guildId: this.#channel.guild.id,
-        adapterCreator: this.#channel.guild.voiceAdapterCreator,
+        channelId: this.channel.id,
+        guildId: this.channel.guild.id,
+        adapterCreator: this.channel.guild.voiceAdapterCreator,
         selfDeaf: false,
       });
 
@@ -34,7 +37,7 @@ module.exports = {
 
     startRecording() {
 
-      console.log(this.#channel.bitrate);
+      console.log(this.channel.bitrate);
       this.#transcoder = new prism.opus.Decoder({
         rate: 48_000,
         channels: 2,
@@ -48,12 +51,13 @@ module.exports = {
         clearInterval: 10,
       });
 
-      const members = this.#channel.members.filter(m => m.user.id != this.#client.user.id);
+      // Receive from each member's connection and add to the mixer.
+      const members = this.channel.members.filter(m => m.user.id != this.#client.user.id);
 
       for (const [id, member] of members) {
         const name = member.nickname ?? member.user.username;
         this.#users.set(id, member);
-        console.log(`Recording ${name}(${id}) in ${this.#channel.name}`);
+        console.log(`Recording ${name}(${id}) in ${this.channel.name}`);
         const stream = this.#connection.receiver.subscribe(member.user.id,
           {
             // Stops after 50 seconds of silence.
@@ -64,16 +68,33 @@ module.exports = {
           },
         );
 
+        this.#streams.set(id, stream);
+
         // Create an input stream for the mixer.
+
+        const silenceMixer = new SilenceFiller({
+          channels: 2,
+          sampleRate: 48_000,
+          bitDepth: 16,
+          clearInterval: 10,
+        });
+        const silenceInput = new SilenceFillerInput({
+          channels: 2,
+          sampleRate: 48_000,
+          bitDepth: 16,
+          volume: 100,
+        });
+        silenceMixer.addInput(silenceInput);
+
         const input = this.#mixer.input({ channels: 2 });
 
         // Pipe the decoded stream to the mixer input.
-        stream.pipe(this.#transcoder).pipe(input);
-
+        stream.pipe(this.#transcoder).pipe(silenceInput);
+        silenceMixer.pipe(input);
       }
 
       // Save into file
-      const dirPath = path.join('.', 'recordings', this.#channel.id);
+      const dirPath = path.join('.', 'recordings', this.channel.id);
       console.log(`Checking ${dirPath}`);
       if (!fs.existsSync(dirPath)) {
         console.log(`Creating ${dirPath}`);
@@ -84,9 +105,9 @@ module.exports = {
 
       console.log(`Recording ${filePath}`);
 
-      const file = fs.createWriteStream(filePath);
+      this.#file = fs.createWriteStream(filePath);
 
-      this.#mixer.pipe(file);
+      this.#mixer.pipe(this.#file);
 
     }
 
@@ -96,7 +117,7 @@ module.exports = {
 
       this.#users.set(user.id, user);
       const name = user.username;
-      console.log(`Recording ${name}(${user.id}) in ${this.#channel.name}`);
+      console.log(`Recording ${name}(${user.id}) in ${this.channel.name}`);
       const stream = this.#connection.receiver.subscribe(user.id,
         {
           // Stops after 50 seconds of silence.
@@ -107,6 +128,8 @@ module.exports = {
         },
       );
 
+      this.#streams.set(user.id, stream);
+
       // Create an input stream for the mixer.
       const input = this.#mixer.input({ channels: 2 });
 
@@ -115,8 +138,19 @@ module.exports = {
 
     }
 
+    // Unrecoverable stop. Just doesn't disconnect.
+    stop() {
+      for (const stream of this.#streams.values()) {
+        stream?.destroy();
+      }
+      this.#mixer?.destroy();
+      this.#file?.destroy();
+    }
+
     close() {
-      // TODO
+      const connection = getVoiceConnection(this.channel.guild.id);
+      connection?.destroy();
+      this.stop();
     }
 
     // TODO: Maybe add guild
@@ -128,7 +162,6 @@ module.exports = {
   },
 
   UserRecorder: class UserRecorder {
-    #connection;
     #client;
     #transcoder;
     #channel;
@@ -144,25 +177,31 @@ module.exports = {
 
     connect() {
       // Create connection
-      this.#connection = joinVoiceChannel({
+      const connection = joinVoiceChannel({
         channelId: this.#channel.id,
         guildId: this.#channel.guild.id,
         adapterCreator: this.#channel.guild.voiceAdapterCreator,
         selfDeaf: false,
       });
 
+      if (connection) return true;
+      return false;
       // TODO: Return if connected
     }
 
     startRecording(withSilence = false) {
       if (!this.checkPermission(this.#client, this.#user)) return;
+      const connection = getVoiceConnection(this.#channel.guild.id);
+      if (!connection) return;
+      // TODO: Add error messages.
+
       this.#transcoder = new prism.opus.Decoder({
         rate: 48_000,
         channels: 2,
         frameSize: 960,
       });
 
-      this.#stream = this.#connection.receiver.subscribe(this.#user.id,
+      this.#stream = connection.receiver.subscribe(this.#user.id,
         {
           // Stops after 50 seconds of silence.
           end: {
@@ -171,7 +210,6 @@ module.exports = {
           },
         },
       );
-
 
       // Create an input stream for the mixer.
       // Save into file
@@ -213,10 +251,17 @@ module.exports = {
       output.pipe(this.#file);
     }
 
+    // Unrecoverable stop. Just doesn't disconnect.
+    stop() {
+      this.#stream?.destroy();
+      this.#silenceMixer?.destroy();
+      this.#file?.destroy();
+    }
+
     close() {
-      if (this.#stream != null) this.#stream.destroy();
-      if (this.#silenceMixer != null) this.#silenceMixer.destroy();
-      if (this.#file != null) this.#file.destroy();
+      const connection = getVoiceConnection(this.#channel.guild.id);
+      connection?.destroy();
+      this.stop();
     }
 
     // TODO: Maybe add guild

@@ -1,38 +1,5 @@
 const { Readable, Writable } = require('stream');
 const { Buffer } = require('node:buffer');
-/*
-class SilentStream extends Readable {
-
-  constructor() {
-    super();
-    let silence = this.generateSilence(640);
-    this.push(silence)
-  }
-
-  currentTimeout = null;
-  _read() {
-    if (this.currentTimeout != null) clearTimeout(this.currentTimeout);
-    let silentStream = this;
-    this.currentTimeout = setTimeout(function () {
-      let silence = silentStream.generateSilence(640);
-      silentStream.push(silence)
-    }, 20);
-  }
-
-  generateSilence(size) {
-    var bitDepth = 16;
-    var byteDepth = 2;
-    var frameSize = 2;
-    var sampleBuf = new Buffer.alloc(Math.floor(size / frameSize) * frameSize);
-
-    for (var i = 0; i < sampleBuf.length; i += byteDepth) {
-      sampleBuf.slice(i).writeInt16LE(0, 0);
-      //['writeInt' + bitDepth + 'LE'](0, 0);
-    }
-    return sampleBuf;
-  }
-}
-*/
 
 class SilenceFillerInput extends Writable {
   constructor(args) {
@@ -99,7 +66,6 @@ class SilenceFillerInput extends Writable {
     for (let i = 0; i < sample.length; i += 2) {
       sample.writeInt16LE(Math.floor(this.args.volume * sample.readInt16LE(i) / 100), i);
     }
-    // console.log(this.buffer.length);
     return sample;
   }
 

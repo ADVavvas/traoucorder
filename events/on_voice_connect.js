@@ -7,6 +7,7 @@ module.exports = {
   execute(oldState, newState) {
     try {
 
+      const client = newState.client;
       // Connected
       /*
       if (newState.client.recordings.has(newState.channel.id)) {

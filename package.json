@@ -10,6 +10,7 @@
     "audio-generator": "^2.1.2",
     "audio-mixer": "^2.1.4",
     "discord.js": "^14.6.0",
+    "ffmpeg": "^0.0.4",
     "ffmpeg-static": "^4.2.7",
     "pcm-silence": "^1.1.0",
     "sodium": "^3.0.2",
